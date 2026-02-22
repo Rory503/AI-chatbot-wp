@@ -1,0 +1,6 @@
+{
+  "installCommand": "pip install --break-system-packages -r requirements.txt",
+  "buildCommand": "echo 'No build step'",
+  "outputDirectory": ".",
+  "framework": "fastapi"
+}
