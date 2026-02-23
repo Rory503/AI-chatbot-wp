@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
@@ -16,8 +17,9 @@ load_dotenv()
 # FastAPI app
 app = FastAPI(title="Nonprofit AI Chatbot API", version="1.0.0")
 
-# CORS middleware
+# CORS middleware - be more permissive for static files
 allowed_origins = os.getenv('ALLOWED_ORIGINS', 'http://localhost:3000').split(',')
+allowed_origins = [origin.strip() for origin in allowed_origins]  # Clean whitespace
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
@@ -25,6 +27,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Mount static files for widget
+widget_path = Path(__file__).resolve().parents[2] / "widget"
+if widget_path.exists():
+    app.mount("/static", StaticFiles(directory=str(widget_path)), name="static")
 
 # Request/Response models
 class ChatRequest(BaseModel):
@@ -47,13 +54,16 @@ def health_check():
     """Health check endpoint for Vercel"""
     return {"status": "healthy", "service": "nonprofit-chatbot-api"}
 
-@app.get("/widget.js")
+@app.get("/widget.js", media_type="application/javascript; charset=utf-8")
 def widget_script():
     """Serve the WordPress widget JavaScript"""
     widget_path = Path(__file__).resolve().parents[2] / "widget" / "widget.js"
     if not widget_path.exists():
         raise HTTPException(status_code=404, detail="Widget not found")
-    return FileResponse(widget_path, media_type="application/javascript")
+    response = FileResponse(widget_path, media_type="application/javascript; charset=utf-8")
+    response.headers["Cache-Control"] = "public, max-age=3600"
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    return response
 
 @app.post("/chat", response_model=ChatResponse)
 def chat(request: ChatRequest):
