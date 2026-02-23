@@ -65,7 +65,11 @@ def widget_script():
     widget_path = Path(__file__).resolve().parents[2] / "widget" / "widget.js"
     if not widget_path.exists():
         raise HTTPException(status_code=404, detail="Widget not found")
-    response = FileResponse(widget_path, media_type="application/javascript; charset=utf-8")
+    
+    response = FileResponse(
+        path=str(widget_path),
+        media_type="application/javascript"
+    )
     response.headers["Cache-Control"] = "public, max-age=3600"
     response.headers["Access-Control-Allow-Origin"] = "*"
     return response
