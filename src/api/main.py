@@ -17,6 +17,11 @@ load_dotenv()
 # FastAPI app
 app = FastAPI(title="Nonprofit AI Chatbot API", version="1.0.0")
 
+# Initialize state
+app.state.db = None
+app.state.embedding_manager = None
+app.state.rag_engine = None
+
 # CORS middleware - be more permissive for static files
 allowed_origins = os.getenv('ALLOWED_ORIGINS', 'http://localhost:3000').split(',')
 allowed_origins = [origin.strip() for origin in allowed_origins]  # Clean whitespace
@@ -56,8 +61,10 @@ def root():
 
 @app.get("/health")
 def health_check():
-    """Health check endpoint for Vercel"""
-    return {"status": "healthy", "service": "nonprofit-chatbot-api"}
+    """Health check endpoint for Railway"""
+    db = getattr(app.state, "db", None)
+    status = "healthy" if db else "degraded"
+    return {"status": status, "service": "nonprofit-chatbot-api"}
 
 @app.get("/widget.js")
 def widget_script():
@@ -166,9 +173,29 @@ def ingest_documents():
 @app.on_event("startup")
 async def startup_event():
     print("✓ Chatbot API starting up...")
-    app.state.db = get_db()
-    app.state.embedding_manager = EmbeddingManager()
-    app.state.rag_engine = RAGEngine(app.state.db)
+    try:
+        app.state.db = get_db()
+        print("✓ Database initialized")
+    except Exception as e:
+        print(f"✗ Database init failed: {e}")
+        app.state.db = None
+    
+    try:
+        app.state.embedding_manager = EmbeddingManager()
+        print("✓ Embedding manager initialized")
+    except Exception as e:
+        print(f"✗ Embedding manager init failed: {e}")
+        app.state.embedding_manager = None
+    
+    try:
+        if app.state.db:
+            app.state.rag_engine = RAGEngine(app.state.db)
+            print("✓ RAG engine initialized")
+    except Exception as e:
+        print(f"✗ RAG engine init failed: {e}")
+        app.state.rag_engine = None
+    
+    print("✓ Startup complete (services may be degraded)")
 
 @app.on_event("shutdown")
 async def shutdown_event():
