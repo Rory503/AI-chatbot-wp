@@ -49,6 +49,11 @@ def _get_state_clients():
     rag_engine = getattr(app.state, "rag_engine", None)
     return db, embedding_manager, rag_engine
 
+@app.get("/")
+def root():
+    """Root endpoint"""
+    return {"status": "online", "service": "nonprofit-chatbot-api", "endpoints": ["/health", "/chat", "/widget.js"]}
+
 @app.get("/health")
 def health_check():
     """Health check endpoint for Vercel"""
