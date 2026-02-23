@@ -17,6 +17,18 @@ load_dotenv()
 # FastAPI app
 app = FastAPI(title="Nonprofit AI Chatbot API", version="1.0.0")
 
+# Add request logging middleware
+@app.middleware("http")
+async def log_requests(request, call_next):
+    print(f">>> Incoming request: {request.method} {request.url.path}")
+    try:
+        response = await call_next(request)
+        print(f"<<< Response status: {response.status_code}")
+        return response
+    except Exception as e:
+        print(f"!!! Request failed: {e}")
+        raise
+
 # CORS middleware - be more permissive for static files
 allowed_origins = os.getenv('ALLOWED_ORIGINS', 'http://localhost:3000').split(',')
 allowed_origins = [origin.strip() for origin in allowed_origins]  # Clean whitespace
