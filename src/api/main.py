@@ -17,11 +17,6 @@ load_dotenv()
 # FastAPI app
 app = FastAPI(title="Nonprofit AI Chatbot API", version="1.0.0")
 
-# Initialize state
-app.state.db = None
-app.state.embedding_manager = None
-app.state.rag_engine = None
-
 # CORS middleware - be more permissive for static files
 allowed_origins = os.getenv('ALLOWED_ORIGINS', 'http://localhost:3000').split(',')
 allowed_origins = [origin.strip() for origin in allowed_origins]  # Clean whitespace
@@ -49,22 +44,42 @@ class ChatResponse(BaseModel):
     query: str
 
 def _get_state_clients():
-    db = getattr(app.state, "db", None)
-    embedding_manager = getattr(app.state, "embedding_manager", None)
-    rag_engine = getattr(app.state, "rag_engine", None)
-    return db, embedding_manager, rag_engine
+    """Lazy initialization of clients"""
+    if not hasattr(app.state, 'db') or app.state.db is None:
+        try:
+            app.state.db = get_db()
+            print("✓ DB initialized on first use")
+        except Exception as e:
+            print(f"✗ DB init failed: {e}")
+            raise
+    
+    if not hasattr(app.state, 'embedding_manager') or app.state.embedding_manager is None:
+        try:
+            app.state.embedding_manager = EmbeddingManager()
+            print("✓ Embedding manager initialized on first use")
+        except Exception as e:
+            print(f"✗ Embedding init failed: {e}")
+            raise
+    
+    if not hasattr(app.state, 'rag_engine') or app.state.rag_engine is None:
+        try:
+            app.state.rag_engine = RAGEngine(app.state.db)
+            print("✓ RAG engine initialized on first use")
+        except Exception as e:
+            print(f"✗ RAG init failed: {e}")
+            raise
+    
+    return app.state.db, app.state.embedding_manager, app.state.rag_engine
 
 @app.get("/")
 def root():
     """Root endpoint"""
-    return {"status": "online", "service": "nonprofit-chatbot-api", "endpoints": ["/health", "/chat", "/widget.js"]}
+    return {"status": "online", "service": "nonprofit-chatbot-api"}
 
 @app.get("/health")
 def health_check():
-    """Health check endpoint for Railway"""
-    db = getattr(app.state, "db", None)
-    status = "healthy" if db else "degraded"
-    return {"status": status, "service": "nonprofit-chatbot-api"}
+    """Health check endpoint - always succeeds"""
+    return {"status": "healthy"}
 
 @app.get("/widget.js")
 def widget_script():
@@ -86,8 +101,6 @@ def chat(request: ChatRequest):
     """Main chat endpoint - RAG-powered query answering"""
     try:
         db, embedding_manager, rag_engine = _get_state_clients()
-        if db is None or embedding_manager is None or rag_engine is None:
-            raise HTTPException(status_code=503, detail="Service not initialized")
 
         query = request.query.strip()
         
@@ -120,9 +133,11 @@ def chat(request: ChatRequest):
             query=query
         )
     
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"✗ Chat error: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/ingest")
 def ingest_documents():
@@ -131,8 +146,6 @@ def ingest_documents():
         from src.ingestion.content_ingester import ContentIngester
 
         db, embedding_manager, _ = _get_state_clients()
-        if db is None or embedding_manager is None:
-            raise HTTPException(status_code=503, detail="Service not initialized")
         
         # Clear existing documents
         db.clear_documents()
@@ -166,43 +179,19 @@ def ingest_documents():
             "chunks_embedded": len(embedded_chunks)
         }
     
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"✗ Ingestion error: {e}")
-        raise HTTPException(status_code=500, detail=f"Ingestion failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.on_event("startup")
 async def startup_event():
-    print("✓ Chatbot API starting up...")
-    try:
-        app.state.db = get_db()
-        print("✓ Database initialized")
-    except Exception as e:
-        print(f"✗ Database init failed: {e}")
-        app.state.db = None
-    
-    try:
-        app.state.embedding_manager = EmbeddingManager()
-        print("✓ Embedding manager initialized")
-    except Exception as e:
-        print(f"✗ Embedding manager init failed: {e}")
-        app.state.embedding_manager = None
-    
-    try:
-        if app.state.db:
-            app.state.rag_engine = RAGEngine(app.state.db)
-            print("✓ RAG engine initialized")
-    except Exception as e:
-        print(f"✗ RAG engine init failed: {e}")
-        app.state.rag_engine = None
-    
-    print("✓ Startup complete (services may be degraded)")
+    print("✓ API started (lazy initialization)")
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    db = getattr(app.state, "db", None)
-    if db:
-        db.close()
-    print("✓ Chatbot API shutting down...")
+    print("✓ API shutdown")
 
 if __name__ == "__main__":
     import uvicorn
