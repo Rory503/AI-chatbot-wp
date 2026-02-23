@@ -54,7 +54,7 @@ def health_check():
     """Health check endpoint for Vercel"""
     return {"status": "healthy", "service": "nonprofit-chatbot-api"}
 
-@app.get("/widget.js", media_type="application/javascript; charset=utf-8")
+@app.get("/widget.js")
 def widget_script():
     """Serve the WordPress widget JavaScript"""
     widget_path = Path(__file__).resolve().parents[2] / "widget" / "widget.js"
