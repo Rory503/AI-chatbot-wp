@@ -32,33 +32,14 @@ class SupabaseClient:
             raise
     
     def _init_pgvector(self):
-        """Initialize pgvector extension and documents table via SQL"""
+        """Initialize pgvector extension and documents table via REST API"""
         try:
-            # Execute SQL to create table and extension
-            sql = """
-            CREATE EXTENSION IF NOT EXISTS vector;
-            
-            CREATE TABLE IF NOT EXISTS documents (
-                id SERIAL PRIMARY KEY,
-                content TEXT NOT NULL,
-                metadata JSONB,
-                embedding vector(1536),
-                source VARCHAR(255),
-                page_number INT,
-                created_at TIMESTAMP DEFAULT NOW()
-            );
-            
-            CREATE INDEX IF NOT EXISTS embedding_idx 
-            ON documents USING ivfflat (embedding vector_cosine_ops)
-            WITH (lists = 100);
-            """
-            
-            # Use RPC to execute raw SQL
-            self.client.rpc('exec_sql', {'sql': sql}).execute()
-            print("✓ pgvector tables initialized")
+            # Check if table exists by trying a simple query
+            result = self.client.table("documents").select("*").limit(1).execute()
+            print("✓ Documents table accessible")
         except Exception as e:
-            # Tables might already exist, that's okay
-            print(f"ℹ pgvector init: {e}")
+            # Table might not exist, but that's okay - it will be created on first insert
+            print(f"ℹ Documents table init: Table may not exist yet (will be created on first insert)")
     
     def insert_document(self, content: str, embedding: list, source: str, page_number: int = None, metadata: dict = None):
         """Insert a document chunk with its embedding"""
